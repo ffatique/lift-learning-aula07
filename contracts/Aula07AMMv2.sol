@@ -26,11 +26,10 @@ contract LIFTAMM is ERC20 {
     uint256 public amountFeeTokenB;
 
 
-    modifier checkBlock(uint deadlineMinutes) {
-        uint deadline = block.timestamp + (deadlineMinutes * 360);
-        require(deadline > block.timestamp, "TRANSACTION EXPIRED");
+    modifier ensure(uint deadline) {
+        require(deadline >= block.timestamp, 'TRANSACTION: EXPIRED');
         _;
-    }     
+    }   
 
     // Raiz quadrada: https://github.com/Uniswap/v2-core/blob/master/contracts/libraries/Math.sol
     function squareRoot(uint256 y) internal pure returns (uint256 z) {
@@ -59,8 +58,8 @@ contract LIFTAMM is ERC20 {
         liquidity = squareRoot(amountA * amountB);
         _totalSupply += liquidity;
         balance[msg.sender] += liquidity;
-        balanceTokenA = balanceA;
-        balanceTokenB = balanceB;
+        balanceTokenA += balanceA;
+        balanceTokenB += balanceB;
         priceSwap = balanceA * balanceB;
         mint(msg.sender, liquidity);
     }
@@ -81,18 +80,17 @@ contract LIFTAMM is ERC20 {
 
         IERC20(tokenA).transfer(msg.sender, amountA);
         IERC20(tokenB).transfer(msg.sender, amountB); 
-        balanceTokenA = balanceA;
-        balanceTokenB = balanceB;
+        balanceTokenA -= balanceA;
+        balanceTokenB -= balanceB;
         priceSwap = balanceA * balanceB;
         _burn(_msgSender(), liquidity);
     }
 
-    function swap(address tokenIn, uint256 amountIn, uint256 minAmountOutPercent, uint deadlineMinutes) external checkBlock(deadlineMinutes) returns (uint256 amountOut) {
+    function swap(address tokenIn, uint256 amountIn, uint256 minAmountOut, uint deadline) external ensure(deadline) returns (uint256 amountOut) {
         uint256 newBalance;
-        uint256 _minAmountOut;
         uint256 feeAmount;
         uint256 amountInWithFee;
-                
+                                
         require(tokenIn == tokenA || tokenIn == tokenB, "TokenIn not in pool");        
 
         uint256 balanceA = IERC20(tokenA).balanceOf(address(this)); // X
@@ -106,10 +104,9 @@ contract LIFTAMM is ERC20 {
             IERC20(tokenA).transferFrom(msg.sender, address(this), amountInWithFee);
             newBalance = k / (balanceA + amountIn);
             amountOut = balanceB - newBalance;
-            _minAmountOut = amountOut * ( minAmountOutPercent / 100);
-            require(amountOut >= _minAmountOut, "Minimum quantity exceeded");          
+            require(amountOut >= minAmountOut, "Minimum quantity exceeded"); 
             IERC20(tokenB).transfer(msg.sender, amountOut);
-            amountFeeTokenA += amountInWithFee - amountIn;
+            amountFeeTokenA += amountInWithFee - amountIn;    
         }
 
         else {
@@ -118,9 +115,7 @@ contract LIFTAMM is ERC20 {
             IERC20(tokenB).transferFrom(msg.sender, address(this), amountInWithFee);
             newBalance = k / (balanceB + amountIn);
             amountOut = balanceA - newBalance;
-             _minAmountOut = amountOut * ( minAmountOutPercent / 100);
-            require(amountOut >= _minAmountOut, "Minimum quantity exceeded");
-            IERC20(tokenA).transfer(msg.sender, amountOut);
+            require(amountOut >= minAmountOut, "Minimum quantity exceeded"); 
             amountFeeTokenB += amountInWithFee - amountIn;
         }      
     }
